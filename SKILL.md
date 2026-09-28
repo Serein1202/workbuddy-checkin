@@ -2,12 +2,14 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: c24c66f571a941975f0cfa91c4043623_7acdfb91bb2111f1a1bf52540064ee0f
-    ReservedCode1: rHf3bTl/2g8h9jpICdTN7n4rz4mGPfu9G3tEvco3z4Vw5zdcT6KV8WSPm1rbSIqe+Yk1asbwCiiVKPLqxnCQsTCDc3NGQNICELf/WX7w1onume0wis2RCEd/vlaczyPohS6hayHyhjEaYGBwtRTtth1jQ+PgZZzjv6q3/eAWfXYs3h5qhkFzpop+3fg=
+    ProduceID: c24c66f571a941975f0cfa91c4043623_bee8bd0ebb3411f19ba1525400638852
+    ReservedCode1: w32cN2+MYQ10A8nCxWsBL5QnvgDN8tXWxZkCl9G3e3FNci1vzwXeiogphBGipNbit2ss4K030K+EJ2HRXIhBYOMwKSe+YtHu8C/EoRGHAyrEhnaCAmgqmhiXF0dQTDgEFQ5CDXEZ0WfSZ8J6EVtwUQ2djrHUpGCO8zRWKtZKdsQcAzOrT7nri6GPFaA=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: c24c66f571a941975f0cfa91c4043623_7acdfb91bb2111f1a1bf52540064ee0f
-    ReservedCode2: rHf3bTl/2g8h9jpICdTN7n4rz4mGPfu9G3tEvco3z4Vw5zdcT6KV8WSPm1rbSIqe+Yk1asbwCiiVKPLqxnCQsTCDc3NGQNICELf/WX7w1onume0wis2RCEd/vlaczyPohS6hayHyhjEaYGBwtRTtth1jQ+PgZZzjv6q3/eAWfXYs3h5qhkFzpop+3fg=
+    PropagateID: c24c66f571a941975f0cfa91c4043623_bee8bd0ebb3411f19ba1525400638852
+    ReservedCode2: w32cN2+MYQ10A8nCxWsBL5QnvgDN8tXWxZkCl9G3e3FNci1vzwXeiogphBGipNbit2ss4K030K+EJ2HRXIhBYOMwKSe+YtHu8C/EoRGHAyrEhnaCAmgqmhiXF0dQTDgEFQ5CDXEZ0WfSZ8J6EVtwUQ2djrHUpGCO8zRWKtZKdsQcAzOrT7nri6GPFaA=
 ---
+
+
 
 
 
@@ -16,9 +18,11 @@ AIGC:
 # WorkBuddy 每日积分签到
 
 自动领取 WorkBuddy 每日积分（100 积分/天，连续第 7 天 1000 积分）。
-全流程在本机完成：读取本地登录态 → 调用腾讯官方签到接口。无后端服务。
+全流程在本机完成：签到前自动检查并拉取远程更新（git 仓库时）→ 读取本地登录态 → 调用腾讯官方签到接口。无后端服务。
 
 ## 原理
+
+0. 自动更新：签到主流程开始前，脚本检查 skill 根目录是否为 git 仓库。是则 `git fetch` + 比较本地与远程，落后时 `git pull --ff-only` 拉取最新代码并重新执行脚本；非 git 仓库（压缩包安装等）静默跳过。设 `WB_CHECKIN_SKIP_UPDATE=1` 可跳过。网络超时 15 秒，超时或 pull 失败均不阻塞签到、不影响退出码与日志格式。
 
 1. WorkBuddy 桌面端登录后，会在本地保存登录态。**v5.3.8+ 的新版桌面端**使用 JSON 文件：
    - macOS：`~/Library/Application Support/CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info`
@@ -237,6 +241,7 @@ Windows PowerShell 执行策略用 `-ExecutionPolicy Bypass`；需 `curl.exe`（
 | `-ElectronPath <path>` | 同上（ps1 版参数） |
 | `WB_CHECKIN_APP_NAME=CodeBuddy` | 兼容旧版应用名（仅旧版 state.vscdb 分支的 macOS 钥匙串密钥） |
 | `WB_CHECKIN_JITTER=<秒>` | 启动前随机等待 0~N 秒，避免整点风暴 |
+| `WB_CHECKIN_SKIP_UPDATE=1` | 跳过签到前的自动更新检查（git 仓库时默认在签到前 fetch + pull 最新代码，pull 成功后重新执行脚本；非 git 仓库静默跳过；网络超时 15 秒，失败不阻塞签到） |
 | `WB_CHECKIN_TELEGRAM=<0/1>` | Telegram 推送开关（**三态标记**）：未设置时按凭据判断（凭据齐全即视为已启用）；显式设为 `0` / `false` / `no` / `off` / `declined` 表示**已拒绝**（直接签到、不再询问）；设为 `1` / `true` / `yes` / `on` 表示已启用 |
 | `TG_BOT_TOKEN=<token>` | Telegram 机器人 Token（**用户自备**，禁止编造或使用示例值；未配置时不会联网推送） |
 | `TG_CHAT_ID=<id>` | 接收消息的对话 ID（**用户自备**，禁止编造或使用示例值；未配置时不会联网推送） |
@@ -400,5 +405,6 @@ $env:TG_CHAT_ID   = "<你的 chat id>"
 | 网络访问 | 默认仅 `copilot.tencent.com` 官方签到接口；推送状态为「已启用」时额外访问 `api.telegram.org`（可经 `TG_PROXY` 等代理），首次配置时发送一条测试消息 | 不访问任何其他域名；未配置凭据或状态为「已拒绝」（`WB_CHECKIN_TELEGRAM=0`）时不发起该请求 |
 | 环境变量读取 | `WB_CHECKIN_*`（Node/WorkBuddy/Electron 路径、应用名、错峰、回退开关、推送开关与超时）及 `TG_BOT_TOKEN` / `TG_CHAT_ID` / `TG_PROXY`（并回退读取 `HTTPS_PROXY` / `ALL_PROXY` / `HTTP_PROXY` 及其小写形式） | 均为本机用户显式配置 |
 | 定时任务 | 由用户显式配置 crontab / launchd / 任务计划程序 | skill 不自动写入系统定时 |
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*

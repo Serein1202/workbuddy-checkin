@@ -2,7 +2,7 @@
 # ============================================================
 # WorkBuddy 每日积分签到（通用版，可分发）
 #
-# 流程：读取本地令牌 → 直接调用签到接口（幂等）→ 写日志
+# 流程：自动更新检查 → 读取本地令牌 → 直接调用签到接口（幂等）→ 写日志
 # 用法：
 #   ./checkin.sh                      # 自动探测运行时（Node 优先，Electron 回退）
 #   WB_CHECKIN_NODE=<path> ./checkin.sh
@@ -271,6 +271,35 @@ if [ "${WB_CHECKIN_JITTER:-0}" -gt 0 ] 2>/dev/null; then
   jitter=$((RANDOM % WB_CHECKIN_JITTER))
   [ "$jitter" -gt 0 ] && sleep "$jitter"
 fi
+
+# ---------- 0. 自动更新检查（git 仓库时拉取最新代码） ----------
+# 设 WB_CHECKIN_SKIP_UPDATE=1 可跳过；非 git 仓库（压缩包安装等）静默跳过。
+# 更新检查为「尽力而为」：网络超时或 pull 失败均不阻塞签到，不影响退出码。
+auto_update_check() {
+  [ "${WB_CHECKIN_SKIP_UPDATE:-}" = "1" ] && return 0
+  local skill_root="$SCRIPT_DIR/.."
+  [ -d "$skill_root/.git" ] || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  # git fetch（15 秒超时，超时静默跳过）
+  local fetch_rc=1
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 15 git -C "$skill_root" fetch --quiet 2>/dev/null && fetch_rc=0
+  else
+    git -C "$skill_root" fetch --quiet 2>/dev/null && fetch_rc=0
+  fi
+  [ "$fetch_rc" -eq 0 ] || return 0
+  # 比较本地与远程：behind 表示远程有新提交
+  if git -C "$skill_root" status -sb 2>/dev/null | grep -q '\[behind'; then
+    log "检测到远程更新，正在拉取最新版本..."
+    if git -C "$skill_root" pull --ff-only --quiet 2>/dev/null; then
+      log "更新完成，重新执行签到脚本"
+      exec "$0" "$@"
+    else
+      log "⚠️ 自动更新失败，使用本地版本继续签到"
+    fi
+  fi
+}
+auto_update_check "$@"
 
 # ---------- 1. 读取令牌并提取字段 ----------
 TOKEN=""; ACC_UID=""; ACC_DOMAIN=""; ACC_EID=""; AUTH_HEADERS=()

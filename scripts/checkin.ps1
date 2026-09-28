@@ -1,7 +1,7 @@
 ﻿# ============================================================
 # WorkBuddy 每日积分签到（Windows PowerShell 版，兼容 PS 5.1）
 #
-# 流程：读取本地令牌 -> 直接调用签到接口（幂等）-> 写日志
+# 流程：自动更新检查 -> 读取本地令牌 -> 直接调用签到接口（幂等）-> 写日志
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File checkin.ps1
 # 或（显式指定运行时）：
@@ -167,6 +167,45 @@ if ($env:WB_CHECKIN_JITTER) {
         $max = [int]$env:WB_CHECKIN_JITTER
         if ($max -gt 0) { Start-Sleep -Seconds (Get-Random -Maximum $max) }
     } catch {}
+}
+
+# ---------- 0. 自动更新检查（git 仓库时拉取最新代码） ----------
+# 设 WB_CHECKIN_SKIP_UPDATE=1 可跳过；非 git 仓库（压缩包安装等）静默跳过。
+# 更新检查为「尽力而为」：网络超时或 pull 失败均不阻塞签到，不影响退出码。
+if ($env:WB_CHECKIN_SKIP_UPDATE -ne "1") {
+    $gitDir = Join-Path $SkillRoot ".git"
+    if ((Test-Path $gitDir) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+        try {
+            # git fetch（15 秒超时，超时静默跳过）
+            $fetchProc = New-Object System.Diagnostics.Process
+            $fetchProc.StartInfo.FileName = "git"
+            $fetchProc.StartInfo.Arguments = "fetch --quiet"
+            $fetchProc.StartInfo.WorkingDirectory = $SkillRoot
+            $fetchProc.StartInfo.UseShellExecute = $false
+            $fetchProc.StartInfo.RedirectStandardOutput = $true
+            $fetchProc.StartInfo.RedirectStandardError = $true
+            $fetchProc.StartInfo.CreateNoWindow = $true
+            $null = $fetchProc.Start()
+            if ($fetchProc.WaitForExit(15000)) {
+                # fetch 完成，检查本地是否落后于远程
+                $status = & git -C $SkillRoot status -sb 2>$null
+                if ($status -match '\[behind') {
+                    Write-Log "检测到远程更新，正在拉取最新版本..."
+                    $null = & git -C $SkillRoot pull --ff-only --quiet 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Log "更新完成，重新执行签到脚本"
+                        & $MyInvocation.MyCommand.Path
+                        exit
+                    } else {
+                        Write-Log "⚠️ 自动更新失败，使用本地版本继续签到"
+                    }
+                }
+            } else {
+                try { $fetchProc.Kill() } catch {}
+            }
+            $fetchProc.Dispose()
+        } catch {}
+    }
 }
 
 function Find-Node {

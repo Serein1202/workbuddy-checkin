@@ -1,9 +1,20 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: c24c66f571a941975f0cfa91c4043623_c0034e2ebb3411f19ba1525400638852
+    ReservedCode1: qHiLf5XNDKTFX3MonZUG2XaNL9fGt+Zgd/kAtAm1bQ95nXd5zz629yUdF2dzyhcsSeA/L4JC6j4ZbqQ1mMTha61CGuxO9G8GLTupxVeY4ygB+K/sFJCKwDriIMyrB9TnSM/TTrMSHiG7bfauE0itHHy+dZWbNyAYXfTCJYkACvJ3TA1wXqMQhDf6B5g=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: c24c66f571a941975f0cfa91c4043623_c0034e2ebb3411f19ba1525400638852
+    ReservedCode2: qHiLf5XNDKTFX3MonZUG2XaNL9fGt+Zgd/kAtAm1bQ95nXd5zz629yUdF2dzyhcsSeA/L4JC6j4ZbqQ1mMTha61CGuxO9G8GLTupxVeY4ygB+K/sFJCKwDriIMyrB9TnSM/TTrMSHiG7bfauE0itHHy+dZWbNyAYXfTCJYkACvJ3TA1wXqMQhDf6B5g=
+---
+
 # workbuddy-checkin
 
 自动领取 **WorkBuddy 每日积分** 的本地签到 skill：直接复用本机 WorkBuddy 桌面端已登录的登录态，调用腾讯官方签到接口完成签到。**无后端服务、无模拟点击、不启动 GUI**。
 
 - 每日签到 **100 积分**，连续第 7 天 **1000 积分**（积分规则以官方为准）
-- 全流程在本机完成：读取本地登录态 → 调用官方接口 → 写本地日志
+- 全流程在本机完成：自动检查更新 → 读取本地登录态 → 调用官方接口 → 写本地日志
 - **幂等**：重复运行不会重复领取，也不会中断连续签到
 - 可选：把签到结果（状态 / 领取积分 / 连续天数）推送到你自己的 Telegram
 - 跨平台：Windows（PowerShell 或 Git Bash）、macOS、Linux
@@ -31,6 +42,8 @@
 ---
 
 ## 2. 工作原理
+
+0. **自动更新**：签到前脚本自动检查 skill 根目录是否为 git 仓库。是则 `git fetch` + 比较本地与远程，落后时 `git pull --ff-only` 拉取最新代码并重新执行脚本；非 git 仓库（压缩包安装等）静默跳过。设 `WB_CHECKIN_SKIP_UPDATE=1` 可跳过。网络超时 15 秒，超时或 pull 失败均不阻塞签到。
 
 1. **登录态来源**：WorkBuddy 桌面端登录后把登录态保存在本机。
    - v5.3.8+（主路径）：明文 JSON 文件 `workbuddy-desktop.info`，内含 `account`、`auth.accessToken` 等，纯 Node 即可读取。
@@ -441,4 +454,5 @@ workbuddy-checkin/
 ## 14. 许可
 
 本项目基于 **MIT License** 开源，Copyright (c) 2026 Cx330，详见 [LICENSE](LICENSE)。
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
