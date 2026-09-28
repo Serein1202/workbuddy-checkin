@@ -1,4 +1,3 @@
-
 # workbuddy-checkin
 
 自动领取 **WorkBuddy 每日积分** 的本地签到 skill：直接复用本机 WorkBuddy 桌面端已登录的登录态，调用腾讯官方签到接口完成签到。**无后端服务、无模拟点击、不启动 GUI**。
@@ -103,11 +102,15 @@ git clone https://github.com/Serein1202/workbuddy-checkin.git
 
 `git clone` 得到的是干净副本：`.gitignore` 已排除 `.env.local`、`logs/`、`.runtime/`、`node_modules/`，**不含任何凭据与本机日志**。
 
-### 4.2 用压缩包 / 由 agent 代为安装
+### 4.2 方式 A：交给 agent 安装（无需懂命令行）
 
-- 从他人处拿到压缩包时，解压后即可使用（正常分发的包内不应包含 `.env.local` 与 `logs/`）。
-- 交由 agent 安装时，把整个目录放到任意位置即可，脚本内部用 `__dirname` / 脚本自身路径定位配置与依赖，**与工作目录无关**。
-- 建议放在纯英文、无空格的路径下，减少命令行转义问题。
+**你不需要看懂命令行**：只要在对话框里把下面这句话发给你的 agent，它就会自行获取并安装本 skill（把 `<你的用户名>` 换成实际仓库地址中的用户名，本项目原始仓库地址见 §4.1）：
+
+> 请帮我安装 workbuddy-checkin 这个 skill：从 https://github.com/Serein1202/workbuddy-checkin 获取，装好后按 SKILL.md 的「首次使用引导」问我是否需要 Telegram 推送，然后运行一次签到做验证。
+
+- **安装完成后**：agent 会先查一次推送配置状态——未配置时会询问你是否要把签到结果推送到 Telegram（需要则引导你提供 Bot Token 与 chat id，流程见 §6.2）；已配置或你选择不推送时，直接进入签到。
+- **若你拿到的是压缩包**：解压后即可使用（正常分发的包内不应包含 `.env.local` 与 `logs/`）。
+- 目录放在任意位置均可：脚本内部用 `__dirname` / 脚本自身路径定位配置与依赖，**与工作目录无关**；建议放在纯英文、无空格的路径下，减少命令行转义问题。
 - 安装路径示例（占位符）：`/path/to/workbuddy-checkin`（macOS / Linux）、`C:\path\to\workbuddy-checkin`（Windows）。
 
 ### 4.3 执行目录（重要）
@@ -438,3 +441,4 @@ workbuddy-checkin/
 ## 14. 许可
 
 本项目基于 **MIT License** 开源，Copyright (c) 2026 Cx330，详见 [LICENSE](LICENSE)。
+*（内容由AI生成，仅供参考）*
