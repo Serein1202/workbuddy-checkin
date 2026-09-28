@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: c24c66f571a941975f0cfa91c4043623_c0034e2ebb3411f19ba1525400638852
-    ReservedCode1: qHiLf5XNDKTFX3MonZUG2XaNL9fGt+Zgd/kAtAm1bQ95nXd5zz629yUdF2dzyhcsSeA/L4JC6j4ZbqQ1mMTha61CGuxO9G8GLTupxVeY4ygB+K/sFJCKwDriIMyrB9TnSM/TTrMSHiG7bfauE0itHHy+dZWbNyAYXfTCJYkACvJ3TA1wXqMQhDf6B5g=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: c24c66f571a941975f0cfa91c4043623_c0034e2ebb3411f19ba1525400638852
-    ReservedCode2: qHiLf5XNDKTFX3MonZUG2XaNL9fGt+Zgd/kAtAm1bQ95nXd5zz629yUdF2dzyhcsSeA/L4JC6j4ZbqQ1mMTha61CGuxO9G8GLTupxVeY4ygB+K/sFJCKwDriIMyrB9TnSM/TTrMSHiG7bfauE0itHHy+dZWbNyAYXfTCJYkACvJ3TA1wXqMQhDf6B5g=
----
-
 # workbuddy-checkin
 
 自动领取 **WorkBuddy 每日积分** 的本地签到 skill：直接复用本机 WorkBuddy 桌面端已登录的登录态，调用腾讯官方签到接口完成签到。**无后端服务、无模拟点击、不启动 GUI**。
@@ -454,5 +443,3 @@ workbuddy-checkin/
 ## 14. 许可
 
 本项目基于 **MIT License** 开源，Copyright (c) 2026 Cx330，详见 [LICENSE](LICENSE)。
-*（内容由AI生成，仅供参考）*
-*（内容由AI生成，仅供参考）*

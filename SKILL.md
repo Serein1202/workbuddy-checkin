@@ -7,6 +7,8 @@ AIGC:
     ContentPropagator: 001191440300708461136T1XGW3
     PropagateID: c24c66f571a941975f0cfa91c4043623_bee8bd0ebb3411f19ba1525400638852
     ReservedCode2: w32cN2+MYQ10A8nCxWsBL5QnvgDN8tXWxZkCl9G3e3FNci1vzwXeiogphBGipNbit2ss4K030K+EJ2HRXIhBYOMwKSe+YtHu8C/EoRGHAyrEhnaCAmgqmhiXF0dQTDgEFQ5CDXEZ0WfSZ8J6EVtwUQ2djrHUpGCO8zRWKtZKdsQcAzOrT7nri6GPFaA=
+name: workbuddy-checkin
+description: "WorkBuddy 每日积分自动签到技能：复用本机 WorkBuddy 桌面端已登录的登录态，直接调用腾讯官方签到接口领取每日积分（每日 100 积分，连续第 7 天 1000 积分），全程在本机完成、无后端服务、无模拟点击、不启动 GUI。当用户提到 WorkBuddy 签到 / 每日积分 / 打卡、需要批量签到、查询签到状态或签到历史，或需要配置 Windows 计划任务、Unix cron / launchd 实现定时或开机自动签到时使用。"
 ---
 
 
