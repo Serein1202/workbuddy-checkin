@@ -1,0 +1,24 @@
+# 签到日志（运行期自动生成，可能含账号相关运行信息，绝不提交）
+logs/
+
+# 运行时 / 依赖产物（setup 脚本按需下载 Electron 时的落地目录）
+.runtime/
+node_modules/
+
+# 本地环境变量与凭据（切勿提交任何 TG_BOT_TOKEN / TG_CHAT_ID / accessToken）
+.env
+.env.*
+# 例外：随 skill 分发的示例模板（仅占位符，不含任何真实凭据）
+!.env.example
+# Telegram 推送的本地配置文件（<skill 根目录>/.env.local，已被上方 .env.* 覆盖，此处显式声明）
+.env.local
+
+# 编辑器 / 操作系统杂项
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时文件
+*.tmp
