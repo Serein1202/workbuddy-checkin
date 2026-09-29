@@ -269,12 +269,12 @@ if (-not $Token -or $Token.StartsWith("ERR")) {
 
 if (-not $Token) {
     Write-Log "未找到 Node 或 Electron 运行时，或运行时未能产出令牌。请安装 Node.js，或设置 WB_CHECKIN_NODE / WB_CHECKIN_ELECTRON。"
-    Send-TelegramNotice "[失败] WorkBuddy 签到失败：未找到本地登录态或运行时（缺少 Node.js / Electron）。请安装 Node.js 或设置 WB_CHECKIN_NODE 指向可用运行时。"
+    Send-TelegramNotice "❌ WorkBuddy 签到失败`n原因：未找到本地登录态或可用运行时（缺少 Node.js / Electron）`n建议：安装 Node.js，或设置 WB_CHECKIN_NODE 指向可用运行时"
     exit 1
 }
 if ($Token.StartsWith("ERR")) {
     Write-Log "获取令牌失败（$Token）。请确认已安装并登录 WorkBuddy 桌面端。"
-    Send-TelegramNotice "[失败] WorkBuddy 签到失败：获取令牌失败。请确认已安装并登录 WorkBuddy 桌面端后重试。"
+    Send-TelegramNotice "❌ WorkBuddy 签到失败`n原因：读取本地登录态失败`n建议：确认已安装并登录 WorkBuddy 桌面端后重试"
     exit 1
 }
 
@@ -323,47 +323,85 @@ function Invoke-CheckinApi([string]$Path) {
 $Result = ""; $HttpCode2 = "000"
 try { $r2 = Invoke-CheckinApi "/v2/billing/meter/daily-checkin"; $HttpCode2 = $r2[0]; $Result = $r2[1] } catch { $HttpCode2 = "000"; $Result = "" }
 if ($HttpCode2 -eq "000") {
-    Write-Log "签到请求失败（网络异常）"
-    Send-TelegramNotice "[失败] WorkBuddy 签到失败：网络异常，无法连接签到接口（HTTP 000）。"
+    Write-Log "签到请求失败（网络异常，无法连接签到接口）"
+    Send-TelegramNotice "❌ WorkBuddy 签到失败`n原因：网络异常，无法连接签到接口`n建议：检查本机网络或代理后重试"
     exit 1
 }
 if ($HttpCode2 -eq "401" -or $HttpCode2 -eq "403") {
     Write-Log "令牌已过期或无权限（HTTP $HttpCode2），请打开 WorkBuddy 桌面端刷新登录态后重试"
-    Send-TelegramNotice "[警告] WorkBuddy 签到失败：令牌已过期或无权限（HTTP $HttpCode2）。请打开 WorkBuddy 桌面端刷新登录态后重试。"
+    Send-TelegramNotice "❌ WorkBuddy 签到失败`n原因：登录状态已过期`n建议：打开 WorkBuddy 桌面端重新登录后重试"
     exit 1
 }
 if (-not $Result) {
     Write-Log "签到请求失败（响应为空，HTTP $HttpCode2）"
-    Send-TelegramNotice "[失败] WorkBuddy 签到失败：接口返回空响应（HTTP $HttpCode2）。"
+    Send-TelegramNotice "❌ WorkBuddy 签到失败`n原因：接口未返回内容，签到结果未知`n建议：稍后重新运行脚本确认"
     exit 1
 }
 
-$Credit = ""
+# 3. 解析签到结果（字段以接口真实返回为准，与桌面端 app.asar 实现一致）
+#   code=0     → data 内含 credit（本次获得积分）、streak_days（连续签到天数）、is_streak_day（是否连签奖励日）
+#   code=10001 → 当日已签到，仅返回 code + msg，不含 data；连续天数等改由签到活动接口补充
+$State = "PARSE_ERR"; $Pcredit = ""; $Pstreak = ""; $PisStreakDay = $false; $PfailCode = ""; $PfailMsg = ""
 try {
     $d = $Result | ConvertFrom-Json
-    if ($d.code -eq 0) { $Credit = "OK credit=$($d.data.credit) streak_days=$($d.data.streak_days)" }
-    elseif ($d.code -eq 10001) { $Credit = "ALREADY today" }   # 当日已签到：接口幂等拒绝，视为成功
-    else { $Credit = "FAIL code=$($d.code) msg=$($d.msg)" }
-} catch { $Credit = "PARSE_ERR" }
+    if ($d.code -eq 0) {
+        $State = "ok"
+        if ($null -ne $d.data.credit) { $Pcredit = [string]$d.data.credit }
+        if ($null -ne $d.data.streak_days) { $Pstreak = [string]$d.data.streak_days }
+        if ($d.data.is_streak_day -eq $true) { $PisStreakDay = $true }
+    }
+    elseif ($d.code -eq 10001) { $State = "already" }   # 当日已签到：接口幂等拒绝，视为成功
+    else { $State = "fail"; $PfailCode = [string]$d.code; $PfailMsg = [string]$d.msg }
+} catch { $State = "PARSE_ERR" }
 
-if ($Credit -like "OK*") {
-    Write-Log "签到成功！领取 $Credit"
-    $detail = $Credit -replace '^OK\s+', ''
-    Send-TelegramNotice "[成功] WorkBuddy 签到成功：$detail（HTTP $HttpCode2）"
+# 尽力而为读取签到活动状态：仅用于给推送补充连续天数 / 今日积分 / 累计积分。
+# 任何失败（网络、未登录、字段缺失）一律静默忽略，绝不展示接口未返回的数值。
+$StStreak = ""; $StToday = ""; $StTotal = ""
+function Update-CheckinStatus {
+    try {
+        $rs = Invoke-CheckinApi "/v2/billing/meter/checkin-activity-status"
+        if (-not $rs -or -not $rs[1]) { return }
+        $s = $rs[1] | ConvertFrom-Json
+        if ($s.code -ne 0 -or $null -eq $s.data) { return }
+        if ($null -ne $s.data.streak_days) { $script:StStreak = [string]$s.data.streak_days }
+        if ($null -ne $s.data.today_credit) { $script:StToday = [string]$s.data.today_credit }
+        if ($null -ne $s.data.total_credits) { $script:StTotal = [string]$s.data.total_credits }
+    } catch { }
+}
+
+# 4. 结果判定与退出码（exit 0：成功 / 已签；exit 1：明确失败或结果未知）
+if ($State -eq "ok") {
+    $logCredit = if ($Pcredit) { $Pcredit } else { "未知" }
+    $logStreak = if ($Pstreak) { $Pstreak } else { "未知" }
+    Write-Log "签到成功！本次获得积分 $logCredit，连续签到 $logStreak 天"
+    Update-CheckinStatus
+    $msg = @("✅ WorkBuddy 签到成功")
+    if ($Pstreak) { $msg += "🔥 连续签到：$Pstreak 天" }
+    if ($Pcredit) { $msg += "🎁 本次获得：$Pcredit 积分" }
+    if ($PisStreakDay) { $msg += "🎉 今日为连续签到奖励日" }
+    if ($StTotal) { $msg += "💰 累计积分：$StTotal" }
+    Send-TelegramNotice ($msg -join "`n")
     exit 0
 }
-elseif ($Credit -like "ALREADY*") {
-    Write-Log "今日已签到，无需重复领取（接口返回已签到）"
-    Send-TelegramNotice "[提示] WorkBuddy 今日已签到，无需重复领取（HTTP $HttpCode2）。"
+elseif ($State -eq "already") {
+    Write-Log "今日已签到，无需重复领取（接口返回 10001）"
+    Update-CheckinStatus
+    $msg = @("⚠️ WorkBuddy 今日已签到")
+    if ($StStreak) { $msg += "🔥 连续签到：$StStreak 天" }
+    if ($StToday) { $msg += "🎁 今日获得：$StToday 积分" }
+    if ($StTotal) { $msg += "💰 累计积分：$StTotal" }
+    if ($msg.Count -eq 1) { $msg = @("⚠️ WorkBuddy 今日已签到，无需重复领取") }
+    Send-TelegramNotice ($msg -join "`n")
     exit 0
 }
-elseif ($Credit -eq "PARSE_ERR") {
-    Write-Log ("签到未成功：" + $Credit)
-    Send-TelegramNotice "[失败] WorkBuddy 签到结果解析失败（PARSE_ERR，HTTP $HttpCode2）。请求已提交，但签到结果未知。"
+elseif ($State -eq "PARSE_ERR") {
+    Write-Log "签到未成功：签到结果解析失败（PARSE_ERR），请求已提交但结果未知"
+    Send-TelegramNotice "⚠️ WorkBuddy 签到结果未知`n原因：无法解析接口返回内容，签到请求已提交`n建议：稍后重新运行脚本确认结果"
     exit 1
 }
 else {
-    Write-Log ("签到未成功：" + $Credit)
-    Send-TelegramNotice "[失败] WorkBuddy 签到未成功：$Credit（HTTP $HttpCode2）"
+    Write-Log "签到未成功：接口返回 code=$PfailCode msg=$PfailMsg（HTTP $HttpCode2）"
+    $reason = if ($PfailMsg) { $PfailMsg } else { "接口返回异常，签到未成功" }
+    Send-TelegramNotice "❌ WorkBuddy 签到失败`n原因：$reason`n建议：稍后重试；若持续失败，请打开 WorkBuddy 桌面端确认登录状态"
     exit 1
 }

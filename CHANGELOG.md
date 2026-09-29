@@ -2,14 +2,29 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: c24c66f571a941975f0cfa91c4043623_c2cfd133bb1c11f19ba1525400638852
-    ReservedCode1: CNBZZtet4nBAUFGaod5YpuCQdPmTFQXRc1bi8/cXnhFlySlYaKCvxj3ZoIocu66dRx0eHyBcu1OpLAaWOvNfjlsvvfIHtzoSgTdJP0y51jAoHYs2elQ6VkfN2S8VGhpUYPZTvPb5AfX8jaVIgyLDOCQ0nDvwmIVV51vQbXRfmGgu+2E9rBBIQGqlBlE=
+    ProduceID: c24c66f571a941975f0cfa91c4043623_51f7351bbbaf11f19ba1525400638852
+    ReservedCode1: aU9J97NgPVjdwtmmF/gMh2wN7EgDEFjzNYkcVwTWek+UZufm+NzHHkxYO3KNHHzGT5PL3BKE4yOG7CqopdZ8bR1lcUEtNu6ORrHMMDkmLIPf1iiCeMtrtX3ACRBv4VYVBEOtTn1N9K3dSvsQzoy9v6fUw+mRZj8pcAn57M5t/ZzTxgxsMsYyG0yhUJQ=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: c24c66f571a941975f0cfa91c4043623_c2cfd133bb1c11f19ba1525400638852
-    ReservedCode2: CNBZZtet4nBAUFGaod5YpuCQdPmTFQXRc1bi8/cXnhFlySlYaKCvxj3ZoIocu66dRx0eHyBcu1OpLAaWOvNfjlsvvfIHtzoSgTdJP0y51jAoHYs2elQ6VkfN2S8VGhpUYPZTvPb5AfX8jaVIgyLDOCQ0nDvwmIVV51vQbXRfmGgu+2E9rBBIQGqlBlE=
+    PropagateID: c24c66f571a941975f0cfa91c4043623_51f7351bbbaf11f19ba1525400638852
+    ReservedCode2: aU9J97NgPVjdwtmmF/gMh2wN7EgDEFjzNYkcVwTWek+UZufm+NzHHkxYO3KNHHzGT5PL3BKE4yOG7CqopdZ8bR1lcUEtNu6ORrHMMDkmLIPf1iiCeMtrtX3ACRBv4VYVBEOtTn1N9K3dSvsQzoy9v6fUw+mRZj8pcAn57M5t/ZzTxgxsMsYyG0yhUJQ=
 ---
 
+
+
 # 变更日志
+
+## [1.3.0] - 2026-09-29
+
+### 变更（Telegram 推送文案重写）
+
+- **文案改成中文分行消息，移除 HTTP 状态码与英文键值对**（原形如 `[成功] WorkBuddy 签到成功：credit=100 streak_days=14 (HTTP 200)`）。`checkin.ps1` 的 `Send-TelegramNotice` 与 `checkin.sh` 的 `notify_telegram` 两套文案保持一致：
+  - 签到成功 → `✅ WorkBuddy 签到成功` + `🔥 连续签到：N 天` + `🎁 本次获得：N 积分` + `🎉 今日为连续签到奖励日`（仅连签奖励日出现）+ `💰 累计积分：N`；
+  - 今日已签到 → `⚠️ WorkBuddy 今日已签到` + 连续天数 / 今日获得 / 累计积分（取不到时退化为一句「今日已签到，无需重复领取」）；
+  - 失败 / 结果未知 → `❌ WorkBuddy 签到失败`（或 `⚠️ WorkBuddy 签到结果未知`）+ 人类可读的中文原因 + 一句可执行建议。
+- **新增 `checkin-activity-status` 只读调用**：`daily-checkin` 返回 `code=10001`（今日已签）时响应体不含 `data`，脚本额外调用 `POST /v2/billing/meter/checkin-activity-status` 尽力补齐 `streak_days` / `today_credit` / `total_credits` 后再拼装「今日已签到」文案；请求失败、未登录或字段缺失一律静默忽略，**绝不展示接口未返回的数值**。
+- **失败原因中文化**：不再出现裸 HTTP 状态码，改为「未找到本地登录态或可用运行时」「读取本地登录态失败」「网络异常，无法连接签到接口」「登录状态已过期，请打开 WorkBuddy 桌面端重新登录」「接口未返回内容，签到结果未知」等可读原因与建议；HTTP 状态码与业务码仅写入 `logs/checkin.log` 供排错。
+- **不变项**：推送仍是 best-effort——发送失败只在日志留一行**不含凭据**的提示，**不改变退出码、不影响签到结果**；推送内容仍**绝不含 `accessToken`**。
+- **文档同步**：`SKILL.md`（接口清单新增 `checkin-activity-status`；Telegram 推送章节重写文案说明；安全说明改为「不含 HTTP 状态码」）与 `README.md`（第 2 节接口清单、能力表、第 6 节推送文案表、安全说明）同步更新。版本号升至 1.3.0。
 
 ## [1.2.0] - 2026-09-28
 
@@ -208,4 +223,5 @@ Issue #73 与 PR #74 原文断言「APISIX 网关只在 `/v2/billing/meter/*` �
 - 本 skill 等价于「每天手动点一次领取今日礼包」，仅操作本机当前登录用户自己的 WorkBuddy 账户
 - 请勿用于他人账户、批量注册刷分或任何违反 WorkBuddy 用户协议的用途
 - 使用者需自行承担使用风险，确保来源可信
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*

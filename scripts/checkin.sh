@@ -308,12 +308,16 @@ extract_fields
 
 if [ -z "$TOKEN" ]; then
   log "❌ 未找到 Node 或 Electron 运行时，或运行时未能产出令牌。请安装 Node.js，或设置 WB_CHECKIN_NODE / WB_CHECKIN_ELECTRON 指向可用运行时。"
-  notify_telegram "[失败] WorkBuddy 签到失败：未找到本地登录态或运行时（缺少 Node.js / Electron）。请安装 Node.js 或设置 WB_CHECKIN_NODE 指向可用运行时。"
+  notify_telegram "❌ WorkBuddy 签到失败
+原因：未找到本地登录态或可用运行时（缺少 Node.js / Electron）
+建议：安装 Node.js，或设置 WB_CHECKIN_NODE 指向可用运行时"
   exit 1
 fi
 if [[ "$TOKEN" == ERR* ]]; then
   log "❌ 获取令牌失败（${TOKEN}）。请确认已安装并登录 WorkBuddy 桌面端。"
-  notify_telegram "[失败] WorkBuddy 签到失败：获取令牌失败。请确认已安装并登录 WorkBuddy 桌面端后重试。"
+  notify_telegram "❌ WorkBuddy 签到失败
+原因：读取本地登录态失败
+建议：确认已安装并登录 WorkBuddy 桌面端后重试"
   exit 1
 fi
 
@@ -331,78 +335,170 @@ HTTP_CODE=$(printf '%s' "$RESP" | tail -n 1)
 RESULT=$(printf '%s' "$RESP" | sed '$d')
 
 if [ -z "$RESP" ] || [ "$HTTP_CODE" = "000" ]; then
-  log "❌ 签到请求失败（网络异常）"
-  notify_telegram "[失败] WorkBuddy 签到失败：网络异常，无法连接签到接口（HTTP 000）。"
+  log "❌ 签到请求失败（网络异常，无法连接签到接口）"
+  notify_telegram "❌ WorkBuddy 签到失败
+原因：网络异常，无法连接签到接口
+建议：检查本机网络或代理后重试"
   exit 1
 fi
 if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
   log "❌ 令牌已过期或无权限（HTTP $HTTP_CODE），请打开 WorkBuddy 桌面端刷新登录态后重试"
-  notify_telegram "[警告] WorkBuddy 签到失败：令牌已过期或无权限（HTTP ${HTTP_CODE}）。请打开 WorkBuddy 桌面端刷新登录态后重试。"
+  notify_telegram "❌ WorkBuddy 签到失败
+原因：登录状态已过期
+建议：打开 WorkBuddy 桌面端重新登录后重试"
   exit 1
 fi
 if [ -z "$RESULT" ]; then
   log "❌ 签到请求失败（响应为空，HTTP $HTTP_CODE）"
-  notify_telegram "[失败] WorkBuddy 签到失败：接口返回空响应（HTTP ${HTTP_CODE}）。"
+  notify_telegram "❌ WorkBuddy 签到失败
+原因：接口未返回内容，签到结果未知
+建议：稍后重新运行脚本确认"
   exit 1
 fi
 
-CREDIT=""
+# 解析接口返回：仅提取接口真实存在的字段（与桌面端 app.asar 实现一致）
+#   code=0     → data 内含 credit（本次获得积分）、streak_days（连续签到天数）、is_streak_day（是否连签奖励日）
+#   code=10001 → 当日已签到，仅返回 code + msg，不含 data；连续天数等改由签到活动接口补充
+STATE_RAW=""
 NODE_BIN="$(find_node)"
 if [ -n "$NODE_BIN" ]; then
-  CREDIT=$(JSON_PAYLOAD="$RESULT" "$NODE_BIN" -e '
+  STATE_RAW=$(JSON_PAYLOAD="$RESULT" "$NODE_BIN" -e '
 const s = process.env.JSON_PAYLOAD || "";
+const kv = (k, v) => (v === undefined || v === null || v === "") ? "" : " " + k + "=" + v;
 try {
   const d = JSON.parse(s);
   if (d.code === 0) {
     const dd = d.data || {};
-    console.log("OK credit=" + dd.credit + " streak_days=" + dd.streak_days);
+    console.log("OK" + kv("credit", dd.credit) + kv("streak_days", dd.streak_days) + (dd.is_streak_day === true ? " is_streak_day=1" : ""));
   } else if (d.code === 10001) {
     console.log("ALREADY today");   // 当日已签到：接口幂等拒绝，视为成功
   } else {
-    console.log("FAIL code=" + d.code + " msg=" + d.msg);
+    console.log("FAIL" + kv("code", d.code) + kv("msg", d.msg));
   }
 } catch (e) { console.log("PARSE_ERR"); }
 ' 2>/dev/null)
 fi
-if [ -z "$CREDIT" ]; then
-  CREDIT=$(echo "$RESULT" | python3 -c "
+if [ -z "$STATE_RAW" ]; then
+  STATE_RAW=$(printf '%s' "$RESULT" | python3 -c "
 import sys, json
+def kv(k, v):
+    return '' if v is None or v == '' else ' ' + k + '=' + str(v)
 try:
     d = json.load(sys.stdin)
     if d.get('code') == 0:
-        data = d.get('data', {})
-        print(f\"OK credit={data.get('credit')} streak_days={data.get('streak_days')}\")
+        dd = d.get('data') or {}
+        print('OK' + kv('credit', dd.get('credit')) + kv('streak_days', dd.get('streak_days')) + (' is_streak_day=1' if dd.get('is_streak_day') is True else ''))
     elif d.get('code') == 10001:
         print('ALREADY today')
     else:
-        print(f\"FAIL code={d.get('code')} msg={d.get('msg')}\")
+        print('FAIL' + kv('code', d.get('code')) + kv('msg', d.get('msg')))
 except Exception:
     print('PARSE_ERR')
 " 2>/dev/null)
 fi
 
+# 从 "OK credit=100 streak_days=14" 这类串里取键值；缺失时输出空串
+kv_get() { printf '%s' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p" | head -n 1; }
+
+# 尽力而为读取签到活动状态：仅用于补充连续天数 / 今日积分 / 累计积分。
+# 任何失败（网络、未登录、字段缺失）一律静默忽略，保持空值，绝不展示接口未返回的数值。
+ST_STREAK=""; ST_TODAY=""; ST_TOTAL=""
+fetch_activity_status() {
+  ST_STREAK=""; ST_TODAY=""; ST_TOTAL=""
+  local resp http body parsed
+  # 官方客户端使用 /v2 前缀；本机实测 /v2/... 与 /... 两种前缀均可被网关接受
+  resp=$(curl -s -m 15 -w '\n%{http_code}' -X POST "$API/v2/billing/meter/checkin-activity-status" \
+    "${AUTH_HEADERS[@]}" -d '{}' 2>/dev/null || echo "")
+  body=$(printf '%s' "$resp" | sed '$d')
+  [ -n "$body" ] || return 0
+  parsed=""
+  if [ -n "$NODE_BIN" ]; then
+    parsed=$(STATUS_PAYLOAD="$body" "$NODE_BIN" -e '
+const s = process.env.STATUS_PAYLOAD || "";
+const kv = (k, v) => (v === undefined || v === null || v === "") ? "" : " " + k + "=" + v;
+try {
+  const d = JSON.parse(s);
+  if (d.code !== 0 || !d.data) process.exit(0);
+  const dd = d.data;
+  console.log(("OK" + kv("streak_days", dd.streak_days) + kv("today_credit", dd.today_credit) + kv("total_credits", dd.total_credits)).trim());
+} catch (e) {}
+' 2>/dev/null)
+  elif command -v python3 >/dev/null 2>&1; then
+    parsed=$(printf '%s' "$body" | python3 -c "
+import sys, json
+def kv(k, v):
+    return '' if v is None or v == '' else ' ' + k + '=' + str(v)
+try:
+    d = json.load(sys.stdin)
+    if d.get('code') == 0 and d.get('data'):
+        dd = d['data']
+        print(('OK' + kv('streak_days', dd.get('streak_days')) + kv('today_credit', dd.get('today_credit')) + kv('total_credits', dd.get('total_credits'))).strip())
+except Exception:
+    pass
+" 2>/dev/null)
+  else
+    return 0
+  fi
+  ST_STREAK=$(kv_get "$parsed" streak_days)
+  ST_TODAY=$(kv_get "$parsed" today_credit)
+  ST_TOTAL=$(kv_get "$parsed" total_credits)
+  http=$(printf '%s' "$resp" | tail -n 1)
+  return 0
+}
+
 # ---------- 3. 结果判定与退出码 ----------
-# exit 0：成功 / 已签 / 未知（缺 python3 无法解析，服务端可能已成功，不误报失败）
-# exit 1：明确失败（code 非 0 非 10001）——便于定时任务捕获并告警
-if [[ "$CREDIT" == OK* ]]; then
-  log "🎉 签到成功！领取 $CREDIT"
-  notify_telegram "[成功] WorkBuddy 签到成功：${CREDIT#OK }（HTTP ${HTTP_CODE}）"
+# exit 0：成功 / 已签 / 结果未知（缺 Node.js 与 python3 无法解析，服务端可能已成功，不误报失败）
+# exit 1：明确失败（code 非 0 非 10001）或解析失败——便于定时任务捕获并告警
+if [[ "$STATE_RAW" == OK* ]]; then
+  P_CREDIT=$(kv_get "$STATE_RAW" credit)
+  P_STREAK=$(kv_get "$STATE_RAW" streak_days)
+  P_ISSTREAK=$(kv_get "$STATE_RAW" is_streak_day)
+  log "🎉 签到成功！本次获得积分 ${P_CREDIT:-未知}，连续签到 ${P_STREAK:-未知} 天"
+  fetch_activity_status
+  msg="✅ WorkBuddy 签到成功"
+  [ -n "$P_STREAK" ] && msg="$msg
+🔥 连续签到：$P_STREAK 天"
+  [ -n "$P_CREDIT" ] && msg="$msg
+🎁 本次获得：$P_CREDIT 积分"
+  [ "$P_ISSTREAK" = "1" ] && msg="$msg
+🎉 今日为连续签到奖励日"
+  [ -n "$ST_TOTAL" ] && msg="$msg
+💰 累计积分：$ST_TOTAL"
+  notify_telegram "$msg"
   exit 0
-elif [[ "$CREDIT" == ALREADY* ]]; then
-  log "✅ 今日已签到，无需重复领取（接口返回已签到）"
-  notify_telegram "[提示] WorkBuddy 今日已签到，无需重复领取（HTTP ${HTTP_CODE}）。"
+elif [[ "$STATE_RAW" == ALREADY* ]]; then
+  log "✅ 今日已签到，无需重复领取（接口返回 10001）"
+  fetch_activity_status
+  msg="⚠️ WorkBuddy 今日已签到"
+  [ -n "$ST_STREAK" ] && msg="$msg
+🔥 连续签到：$ST_STREAK 天"
+  [ -n "$ST_TODAY" ] && msg="$msg
+🎁 今日获得：$ST_TODAY 积分"
+  [ -n "$ST_TOTAL" ] && msg="$msg
+💰 累计积分：$ST_TOTAL"
+  [ "$msg" = "⚠️ WorkBuddy 今日已签到" ] && msg="⚠️ WorkBuddy 今日已签到，无需重复领取"
+  notify_telegram "$msg"
   exit 0
-elif [ -z "$CREDIT" ]; then
-  # 多为缺 python3 导致结果无法解析：服务端可能已成功，不能误报失败
-  log "⚠️ 签到请求已提交，但缺少 python3 无法解析结果（请打开 WorkBuddy 确认；安装 python3 可恢复明细）"
-  notify_telegram "[提示] WorkBuddy 签到请求已提交，但结果无法解析（缺少 Node.js / python3，HTTP ${HTTP_CODE}）。请打开 WorkBuddy 确认签到状态。"
+elif [ -z "$STATE_RAW" ]; then
+  # 多为缺 Node.js 与 python3 导致结果无法解析：服务端可能已成功，不能误报失败
+  log "⚠️ 签到请求已提交，但缺少 Node.js / python3 无法解析结果（请打开 WorkBuddy 确认；安装后可恢复明细）"
+  notify_telegram "⚠️ WorkBuddy 签到结果未知
+原因：本机缺少 Node.js / python3，无法解析接口返回内容（签到请求已提交）
+建议：打开 WorkBuddy 桌面端确认签到状态"
   exit 0
-elif [[ "$CREDIT" == "PARSE_ERR" ]]; then
-  log "❌ 签到未成功：$CREDIT"
-  notify_telegram "[失败] WorkBuddy 签到结果解析失败（PARSE_ERR，HTTP ${HTTP_CODE}）。请求已提交，但签到结果未知。"
+elif [[ "$STATE_RAW" == "PARSE_ERR" ]]; then
+  log "❌ 签到未成功：签到结果解析失败（PARSE_ERR），请求已提交但结果未知"
+  notify_telegram "⚠️ WorkBuddy 签到结果未知
+原因：无法解析接口返回内容，签到请求已提交
+建议：稍后重新运行脚本确认结果"
   exit 1
 else
-  log "❌ 签到未成功：$CREDIT"
-  notify_telegram "[失败] WorkBuddy 签到未成功：${CREDIT}（HTTP ${HTTP_CODE}）"
+  P_FAILCODE=$(kv_get "$STATE_RAW" code)
+  P_FAILMSG=$(kv_get "$STATE_RAW" msg)
+  log "❌ 签到未成功：接口返回 code=${P_FAILCODE:-未知} msg=${P_FAILMSG:-未知}（HTTP ${HTTP_CODE}）"
+  reason="${P_FAILMSG:-接口返回异常，签到未成功}"
+  notify_telegram "❌ WorkBuddy 签到失败
+原因：$reason
+建议：稍后重试；若持续失败，请打开 WorkBuddy 桌面端确认登录状态"
   exit 1
 fi

@@ -2,14 +2,14 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: c24c66f571a941975f0cfa91c4043623_bee8bd0ebb3411f19ba1525400638852
-    ReservedCode1: w32cN2+MYQ10A8nCxWsBL5QnvgDN8tXWxZkCl9G3e3FNci1vzwXeiogphBGipNbit2ss4K030K+EJ2HRXIhBYOMwKSe+YtHu8C/EoRGHAyrEhnaCAmgqmhiXF0dQTDgEFQ5CDXEZ0WfSZ8J6EVtwUQ2djrHUpGCO8zRWKtZKdsQcAzOrT7nri6GPFaA=
+    ProduceID: c24c66f571a941975f0cfa91c4043623_50524e6abbaf11f1a1bf52540064ee0f
+    ReservedCode1: KKo8t/QYVChZLyEgGJu0T+mWIKj0dHB3GDoFzDUgFa1SfhjYQnyj6qnRTCof9fuc3GXwdvtehbkESwRMPxF6AVm/7Of1a0K3Ka/dILc0eVdumwj+6btwWDTiOaFwqE0oUb6ebU7Yhx5yJ0LnN373/96iWZGortDW0//DWrJ9ZNC00EoORea+stSGm3E=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: c24c66f571a941975f0cfa91c4043623_bee8bd0ebb3411f19ba1525400638852
-    ReservedCode2: w32cN2+MYQ10A8nCxWsBL5QnvgDN8tXWxZkCl9G3e3FNci1vzwXeiogphBGipNbit2ss4K030K+EJ2HRXIhBYOMwKSe+YtHu8C/EoRGHAyrEhnaCAmgqmhiXF0dQTDgEFQ5CDXEZ0WfSZ8J6EVtwUQ2djrHUpGCO8zRWKtZKdsQcAzOrT7nri6GPFaA=
-name: workbuddy-checkin
-description: "WorkBuddy 每日积分自动签到技能：复用本机 WorkBuddy 桌面端已登录的登录态，直接调用腾讯官方签到接口领取每日积分（每日 100 积分，连续第 7 天 1000 积分），全程在本机完成、无后端服务、无模拟点击、不启动 GUI。当用户提到 WorkBuddy 签到 / 每日积分 / 打卡、需要批量签到、查询签到状态或签到历史，或需要配置 Windows 计划任务、Unix cron / launchd 实现定时或开机自动签到时使用。"
+    PropagateID: c24c66f571a941975f0cfa91c4043623_50524e6abbaf11f1a1bf52540064ee0f
+    ReservedCode2: KKo8t/QYVChZLyEgGJu0T+mWIKj0dHB3GDoFzDUgFa1SfhjYQnyj6qnRTCof9fuc3GXwdvtehbkESwRMPxF6AVm/7Of1a0K3Ka/dILc0eVdumwj+6btwWDTiOaFwqE0oUb6ebU7Yhx5yJ0LnN373/96iWZGortDW0//DWrJ9ZNC00EoORea+stSGm3E=
 ---
+
+
 
 
 
@@ -37,6 +37,7 @@ description: "WorkBuddy 每日积分自动签到技能：复用本机 WorkBuddy 
 5. 调用腾讯官方签到 API：
    - 查状态：`POST https://copilot.tencent.com/v2/billing/meter/checkin-status`
    - 执行签到：`POST https://copilot.tencent.com/v2/billing/meter/daily-checkin`
+   - 查签到活动状态：`POST https://copilot.tencent.com/v2/billing/meter/checkin-activity-status`（**仅用于给推送补充**连续天数 / 今日积分 / 累计积分；请求失败、未登录或字段缺失一律静默忽略，**绝不展示接口未返回的数值**）
    - 认证：`Authorization: Bearer <accessToken>`，并按桌面端 `buildHeaders` 附带 `X-User-Id: <account.uid>`；有 `auth.domain` 时加 `X-Domain`，企业账号另加 `X-Enterprise-Id` / `X-Tenant-Id`
    - 兼容说明：`checkin.ps1` 走上述 `/v2/` 全量签名（对齐桌面端）；`checkin.sh` 仍走不带 `/v2/` 前缀、仅 `Authorization` 的旧写法。**两种写法实测均返回 200**（见 CHANGELOG 1.0.3 的验证矩阵），网关当前未强制 `/v2/` 或 `X-User-Id`；对齐桌面端属前向兼容加固，不是修复 401 的必要条件
 6. 脚本幂等：直接调用 `daily-checkin`（不再预查 `checkin-status`）。`daily-checkin` 返回 `code=10001`（今天已签到）视为成功；`today_checked_in` 字段不可靠，预查反而会在假阳性时漏签、中断连续签到。
@@ -252,7 +253,13 @@ Windows PowerShell 执行策略用 `-ExecutionPolicy Bypass`；需 `curl.exe`（
 
 ## Telegram 推送（可选）
 
-签到流程结束（成功 / 今日已签 / 令牌过期或无权限 / 网络异常 / 其他失败 / 解析异常）后，可自动向你的 Telegram 机器人推送一条中文状态消息，内容含签到状态、`credit`、`streak_days`、HTTP 状态码与失败原因。**凭据由用户自备，经环境变量或本地配置文件注入，代码中不硬编码任何 Token。首次使用时的完整引导流程见上文「首次使用引导」章节。**
+签到流程结束（成功 / 今日已签 / 登录态失效 / 网络异常 / 其他失败 / 解析异常）后，可自动向你的 Telegram 机器人推送一条**中文分行消息**：只给可读结论与有价值的结果字段，**不含任何 HTTP 状态码**（状态码只写进签到日志，便于排错）。三种形态：
+
+- **签到成功**：`✅ WorkBuddy 签到成功` + `🔥 连续签到：N 天` + `🎁 本次获得：N 积分` + `🎉 今日为连续签到奖励日`（仅当接口标记为连签奖励日）+ `💰 累计积分：N`；
+- **今日已签到**：`⚠️ WorkBuddy 今日已签到` + `🔥 连续签到：N 天` + `🎁 今日获得：N 积分` + `💰 累计积分：N`（活动状态取不到时退化为一句「今日已签到，无需重复领取」）；
+- **失败 / 结果未知**：`❌ WorkBuddy 签到失败`（或 `⚠️ WorkBuddy 签到结果未知`）+ **人类可读的中文原因**（如「登录状态已过期，请打开 WorkBuddy 桌面端重新登录」「网络异常，无法连接签到接口」「接口未返回内容，签到结果未知」）+ 一句可执行建议。
+
+连续天数与积分取自 `daily-checkin`（`credit` / `streak_days` / `is_streak_day`）与 `checkin-activity-status`（`streak_days` / `today_credit` / `total_credits`）的**实际返回字段**，**接口未返回的字段一律不出现**在消息里；`checkin.ps1` 与 `checkin.sh` 文案完全一致。**凭据由用户自备，经环境变量或本地配置文件注入，代码中不硬编码任何 Token。首次使用时的完整引导流程见上文「首次使用引导」章节。**
 
 ### 用辅助脚本配置（推荐）
 
@@ -372,11 +379,11 @@ $env:TG_CHAT_ID   = "<你的 chat id>"
 > ⚠️ **凭据即账号密码**：本 skill 解密的 `accessToken` 等同你的 WorkBuddy 账号密码，具有高敏感性。请务必遵守以下红线：
 
 - 令牌仅在内存中使用，通过管道立即被签到请求消费，**不写入任何日志文件、不落盘、不回显到终端、不提交到仓库**。
-- `logs/` 仅记录签到结果（积分 / 连续天数 / 成功失败），**绝不含令牌原文**。切勿将日志或脚本输出粘贴分享。
+- `logs/` 仅记录签到结果（积分 / 连续天数 / 成功失败）与排错所需的 HTTP 状态码 / 业务码，**绝不含令牌原文**。切勿将日志或脚本输出粘贴分享。
 - 网络访问默认仅发往腾讯官方接口 `copilot.tencent.com/billing/meter/*` 与 `copilot.tencent.com/v2/billing/meter/*`；**仅当推送处于「已启用」状态（显式设 `WB_CHECKIN_TELEGRAM=1`，或未设开关但 `TG_BOT_TOKEN` + `TG_CHAT_ID` 齐全）时**，才会额外向 `api.telegram.org` 发送一条签到状态消息（首次配置时发送一条测试消息）；状态为「未配置」或「已拒绝」（`WB_CHECKIN_TELEGRAM=0`）时完全不访问该域名。除此之外不向任何第三方上传数据。
 - Telegram 凭据只从环境变量或 skill 根目录 `.env.local` 读取（前者优先）；该文件已被 `.gitignore` 忽略，**切勿提交仓库、切勿分享**。**把 skill 分发给他人前，请先物理删除 `.env.local` 与 `logs/`**——整目录拷贝 / 打压缩包分发时会连同它们一起带走（详见 `README.md` 的「分发前必读」）。读取为逐行字符串提取（不做 `source` / `Invoke-Expression`），**不会执行文件中任何代码**。
 - `scripts/tg-config.js` 写入凭据时同样只动 `.env.local` 中上述白名单键（就地更新、保留其余内容与注释），**从不回显凭据值**（状态查询仅报「已配置 / 缺失」，代理串含认证信息时打码），也不把凭据写入日志或除该文件以外的任何位置。
-- Telegram 推送内容**只含签到状态与结果字段（积分 / 连续天数 / HTTP 状态码 / 失败原因），绝不含 `accessToken` 或任何凭据**；推送请求设超时。推送失败（含凭据缺失）只在签到日志里留一行**不含凭据**的提示，**不改变退出码、不影响签到结果**。
+- Telegram 推送内容**只含签到状态与结果字段（连续天数 / 本次积分 / 累计积分 / 中文失败原因），绝不含 HTTP 状态码、`accessToken` 或任何凭据**；推送请求设超时。推送失败（含凭据缺失）只在签到日志里留一行**不含凭据**的提示，**不改变退出码、不影响签到结果**。
 - 解密成功时脚本会向 stderr 打印一行安全提示（不影响 stdout 的 token 管道），便于你确认凭据正在被使用。
 - 请勿用于他人账户、批量注册刷分或任何违反 WorkBuddy 用户协议的用途；使用者自行承担使用风险。
 
@@ -407,6 +414,7 @@ $env:TG_CHAT_ID   = "<你的 chat id>"
 | 网络访问 | 默认仅 `copilot.tencent.com` 官方签到接口；推送状态为「已启用」时额外访问 `api.telegram.org`（可经 `TG_PROXY` 等代理），首次配置时发送一条测试消息 | 不访问任何其他域名；未配置凭据或状态为「已拒绝」（`WB_CHECKIN_TELEGRAM=0`）时不发起该请求 |
 | 环境变量读取 | `WB_CHECKIN_*`（Node/WorkBuddy/Electron 路径、应用名、错峰、回退开关、推送开关与超时）及 `TG_BOT_TOKEN` / `TG_CHAT_ID` / `TG_PROXY`（并回退读取 `HTTPS_PROXY` / `ALL_PROXY` / `HTTP_PROXY` 及其小写形式） | 均为本机用户显式配置 |
 | 定时任务 | 由用户显式配置 crontab / launchd / 任务计划程序 | skill 不自动写入系统定时 |
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
